@@ -110,6 +110,18 @@ def eliminar_venta(venta_id):
     con.commit()
     con.close()
 
+def obtener_venta_por_id(venta_id):
+    con = get_connection()
+    cur = con.cursor()
+    cur.execute("""
+        SELECT v.id, v.cliente_id, v.servicio_id, v.monto, v.fecha
+        FROM ventas v
+        WHERE v.id = ?
+    """, (venta_id,))
+    venta = cur.fetchone()
+    con.close()
+    return venta
+
 # ---------------- REPORTES (DataFrames) ----------------
 def df_clientes():
     con = get_connection()
