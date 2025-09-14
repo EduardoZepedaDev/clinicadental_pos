@@ -33,10 +33,6 @@ class ClientesWindow(QWidget):
         self.btn_eliminar.clicked.connect(self.eliminar_cliente)
         btn_layout.addWidget(self.btn_eliminar)
 
-        self.btn_refrescar = QPushButton("Actualizar Lista", self)
-        self.btn_refrescar.clicked.connect(self.cargar_clientes)
-        btn_layout.addWidget(self.btn_refrescar)
-
         layout.addLayout(btn_layout)
 
         # --- Tabla de clientes ---
@@ -75,11 +71,11 @@ class ClientesWindow(QWidget):
             return
 
         cliente_id = int(self.tabla.item(fila, 0).text())
-
+        nombre_cliente = self.tabla.item(fila, 1).text()
         confirm = QMessageBox.question(
             self,
             "Confirmar",
-            f"¿Seguro que deseas eliminar al cliente ID {cliente_id}?",
+            f"¿Seguro que deseas eliminar al cliente {nombre_cliente}?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
 

@@ -33,10 +33,6 @@ class ServiciosWindow(QWidget):
         self.btn_eliminar.clicked.connect(self.eliminar_servicio)
         btn_layout.addWidget(self.btn_eliminar)
 
-        self.btn_refrescar = QPushButton("Actualizar Lista", self)
-        self.btn_refrescar.clicked.connect(self.cargar_servicios)
-        btn_layout.addWidget(self.btn_refrescar)
-
         layout.addLayout(btn_layout)
 
         # --- Tabla de servicios ---
@@ -81,11 +77,14 @@ class ServiciosWindow(QWidget):
             return
 
         servicio_id = int(self.tabla.item(fila, 0).text())
+        # Obtén el nombre del servicio de la segunda columna (índice 1)
+        nombre = self.tabla.item(fila, 1).text()
 
         confirm = QMessageBox.question(
             self,
             "Confirmar",
-            f"¿Seguro que deseas eliminar el servicio ID {servicio_id}?",
+            # Usa la variable 'nombre' en el mensaje de confirmación
+            f"¿Seguro que deseas eliminar el servicio '{nombre}'?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
 

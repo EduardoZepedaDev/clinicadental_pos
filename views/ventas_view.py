@@ -10,7 +10,9 @@ from reportlab.lib.pagesizes import A7 # A7 es un tamaño pequeño, similar a un
 from reportlab.lib.units import mm # Para trabajar con milímetros, más fácil para tickets
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont # Para registrar una fuente si es necesario
-
+import tempfile
+import win32print
+import win32api
 
 class VentasWindow(QWidget):
     def __init__(self):
@@ -58,10 +60,6 @@ class VentasWindow(QWidget):
         self.btn_eliminar.clicked.connect(self.eliminar_venta)
         btn_layout.addWidget(self.btn_eliminar)
 
-        self.btn_refrescar = QPushButton("Actualizar Lista", self)
-        self.btn_refrescar.clicked.connect(self.cargar_ventas)
-        btn_layout.addWidget(self.btn_refrescar)
-
         layout.addLayout(btn_layout)
 
         # --- Tabla de ventas ---
@@ -108,13 +106,13 @@ class VentasWindow(QWidget):
         clientes = database.obtener_clientes()
         self.cliente_map = {c[0]: c[1] for c in clientes}
         for c in clientes:
-            self.cliente_id.addItem(f"{c[1]} (ID {c[0]})", c[0])
+            self.cliente_id.addItem(f"{c[1]}", c[0])
 
         # --- Servicios ---
         servicios = database.obtener_servicios()
         self.servicio_map = {s[0]: (s[1], s[2]) for s in servicios}
         for s in servicios:
-            self.servicio_id.addItem(f"{s[1]} - ${s[2]} (ID {s[0]})", s[0])
+            self.servicio_id.addItem(f"{s[1]}", s[0])
 
     def registrar_venta(self):
         if self.cliente_id.currentData() is None or self.servicio_id.currentData() is None:
@@ -137,9 +135,6 @@ class VentasWindow(QWidget):
             QMessageBox.warning(self, "Error", "El monto y pago deben ser numéricos.")
             return
 
-        if pago_con < monto_total:
-            QMessageBox.warning(self, "Error", "El pago no cubre el monto total de la venta.")
-            return
 
         cliente_id_sel = self.cliente_id.currentData()
         servicio_id_sel = self.servicio_id.currentData()
@@ -165,11 +160,14 @@ class VentasWindow(QWidget):
             return
 
         venta_id = int(self.tabla.item(fila, 0).text())
-
+        # Obtiene el nombre del cliente de la segunda columna (índice 1)
+        nombre_cliente = self.tabla.item(fila, 1).text()
+        
         confirm = QMessageBox.question(
             self,
             "Confirmar",
-            f"¿Seguro que deseas eliminar la venta ID {venta_id}?",
+            # Usa el nombre del cliente en el mensaje
+            f"¿Seguro que deseas eliminar la venta de {nombre_cliente}?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
 
@@ -187,15 +185,13 @@ class VentasWindow(QWidget):
                 self.tabla.setItem(row_num, col_num, QTableWidgetItem(str(value)))
                 
     def imprimir_ticket_seleccionado(self):
-        """Genera un ticket PDF para la venta seleccionada en la tabla."""
         fila_seleccionada = self.tabla.currentRow()
         if fila_seleccionada < 0:
             QMessageBox.warning(self, "Error", "Debes seleccionar una venta de la tabla para imprimir.")
             return
 
         venta_id = int(self.tabla.item(fila_seleccionada, 0).text())
-        
-        # Obtener los datos de la venta de la base de datos
+        # Obtener los datos de la venta desde la BD
         venta_data = database.obtener_venta_por_id(venta_id)
         
         if not venta_data:
@@ -205,53 +201,47 @@ class VentasWindow(QWidget):
         # Desempaquetar los datos de la venta
         id, cliente_id, servicio_id, monto, fecha = venta_data
         
-        # Para la reimpresión, asumimos que el pago fue igual al monto
+        # Para la reimpresión, asumimos que el pago fue igual al monto y cambio = 0
         self.generar_ticket_pdf(cliente_id, servicio_id, monto, monto, 0.0)
-        
-        QMessageBox.information(self, "Ticket Impreso", f"Se ha generado el ticket PDF de la venta ID {id}.")
+
+        # Ya no mostramos mensaje de "PDF guardado"
+        QMessageBox.information(self, "Ticket enviado", f"Ticket de la venta ID {venta_id} enviado a la impresora.")
                 
     def generar_ticket_pdf(self, cliente_id, servicio_id, monto_total, pago_con, cambio_calc):
-        """Genera un ticket de venta en formato PDF con estilo de impresora térmica."""
-        
-        # Obtiene la ruta donde se guardará el archivo
-        file_name, _ = QFileDialog.getSaveFileName(
-            self, 
-            "Guardar Ticket PDF", 
-            os.path.join(os.getcwd(), f"ticket_venta_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"),
-            "PDF Files (*.pdf)"
-        )
-        
-        if not file_name:
-            return # El usuario canceló la operación
-
         try:
-            # Creamos un lienzo (canvas) con un tamaño pequeño para el ticket (ej. A7)
-            c = canvas.Canvas(file_name, pagesize=A7) 
-            width, height = A7 # Obtener el ancho y alto de la página
+            # Crear archivo temporal
+            temp_file = os.path.join(
+                tempfile.gettempdir(),
+                f"ticket_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+            )
 
-            # --- Datos de la tienda ---
+            # Crear canvas para el ticket
+            c = canvas.Canvas(temp_file, pagesize=A7) 
+            width, height = A7
+
+            # -------------------------------
+            # Aquí va tu mismo código de dibujo del PDF
+            # (encabezado, cliente, servicio, totales, pie de página)
+            # -------------------------------
             NOMBRE_TIENDA = "CLINICA DENTAL NORTE"
             DIRECCION_TIENDA = "31 PONIENTE ENTRE 6.ª y 8.ª NORTE COL. 5 DE FEBRERO"
             TELEFONO_TIENDA = "962 127 8373"
             EMAIL_TIENDA = "clinica.odontologica.norte.85@gmail.com"
             HORARIO_TIENDA = "L-S 08:00 AM a 08:00 PM"
-            RFC_TIENDA = "GOMS6507062H3" # RFC (puedes cambiarlo)
+            RFC_TIENDA = "GOMS6507062H3"
 
-            # --- Información del cliente y servicio ---
             nombre_cliente = self.cliente_map.get(cliente_id, 'Desconocido')
             nombre_servicio, precio_servicio = self.servicio_map.get(servicio_id, ('Desconocido', 0.0))
-            
-            # --- Empezamos a dibujar en el PDF ---
-            y_offset = height - 10*mm # Punto de inicio desde la parte superior (en mm)
-            line_height = 4*mm # Altura de cada línea (espaciado)
 
-            # Centrar textos
+            y_offset = height - 10*mm
+            line_height = 4*mm
+
             def draw_centered_text(y_pos, text, font_name="Helvetica", font_size=8):
                 c.setFont(font_name, font_size)
                 text_width = c.stringWidth(text, font_name, font_size)
                 c.drawString((width - text_width) / 2.0, y_pos, text)
 
-            # --- Encabezado de la tienda ---
+            # Encabezado
             draw_centered_text(y_offset, NOMBRE_TIENDA.upper(), font_size=10)
             y_offset -= line_height
             draw_centered_text(y_offset, DIRECCION_TIENDA, font_size=7)
@@ -263,69 +253,62 @@ class VentasWindow(QWidget):
             draw_centered_text(y_offset, HORARIO_TIENDA, font_size=7)
             y_offset -= line_height
             draw_centered_text(y_offset, RFC_TIENDA, font_size=7)
-            y_offset -= line_height * 1.5 # Más espacio
+            y_offset -= line_height * 1.5
 
-            # --- Datos del ticket ---
             c.setFont("Helvetica", 7)
-            
-            # Formatear la fecha y hora
             fecha_hora_str = datetime.datetime.now().strftime('%d/%m/%Y %H:%M %p').replace('AM', 'am').replace('PM', 'pm')
-            
             c.drawString(5*mm, y_offset, "FECHA:")
             c.drawString(width - c.stringWidth(fecha_hora_str, "Helvetica", 7) - 5*mm, y_offset, fecha_hora_str)
             y_offset -= line_height
-            
-            # --- Cliente ---
+
             c.drawString(5*mm, y_offset, "CLIENTE:")
             c.drawString(width - c.stringWidth(nombre_cliente, "Helvetica", 7) - 5*mm, y_offset, nombre_cliente)
             y_offset -= line_height * 1.5
 
-            # --- Encabezado de la tabla de artículos ---
             c.drawString(5*mm, y_offset, "CANT. DESCRIPCIÓN")
-            y_offset -= line_height * 0.5 # Menos espacio
+            y_offset -= line_height * 0.5
             draw_centered_text(y_offset, "========================================", font_size=7)
             y_offset -= line_height * 0.5
 
-            # --- Detalle del servicio ---
-            cantidad_servicio = 1 
-            max_desc_width = width - 10*mm - c.stringWidth(f"${precio_servicio:.2f}", "Helvetica", 7) - 5*mm
-            desc_text = f"{cantidad_servicio} {nombre_servicio}"
-            if c.stringWidth(desc_text, "Helvetica", 7) > max_desc_width:
-                 desc_text = desc_text[:int(len(desc_text) * (max_desc_width / c.stringWidth(desc_text, "Helvetica", 7)))] + "..."
-
-            c.drawString(5*mm, y_offset, desc_text)
+            cantidad_servicio = 1
+            c.drawString(5*mm, y_offset, f"{cantidad_servicio} {nombre_servicio}")
             c.drawRightString(width - 5*mm, y_offset, f"${precio_servicio:.2f}")
-            y_offset -= line_height * 1.5 
+            y_offset -= line_height * 1.5
 
-            # --- Totales ---
             draw_centered_text(y_offset, "========================================", font_size=7)
             y_offset -= line_height * 0.5
 
-            # Número de artículos (solo 1 en este ejemplo simplificado)
             c.drawString(5*mm, y_offset, f"NO. DE ARTICULOS: {cantidad_servicio}") 
             y_offset -= line_height
-
-            c.drawString(width - c.stringWidth("TOTAL:", "Helvetica", 7) - c.stringWidth(f"${monto_total:.2f}", "Helvetica", 7) - 10*mm, y_offset, "TOTAL:")
+            c.drawString(5*mm, y_offset, "TOTAL:")
             c.drawRightString(width - 5*mm, y_offset, f"${monto_total:.2f}")
             y_offset -= line_height
-
-            c.drawString(width - c.stringWidth("PAGO CON:", "Helvetica", 7) - c.stringWidth(f"${pago_con:.2f}", "Helvetica", 7) - 10*mm, y_offset, "PAGO CON:")
+            c.drawString(5*mm, y_offset, "PAGO CON:")
             c.drawRightString(width - 5*mm, y_offset, f"${pago_con:.2f}")
             y_offset -= line_height
-
-            c.drawString(width - c.stringWidth("SU CAMBIO:", "Helvetica", 7) - c.stringWidth(f"${cambio_calc:.2f}", "Helvetica", 7) - 10*mm, y_offset, "SU CAMBIO:")
+            c.drawString(5*mm, y_offset, "SU CAMBIO:")
             c.drawRightString(width - 5*mm, y_offset, f"${cambio_calc:.2f}")
-            y_offset -= line_height * 2 # Más espacio
+            y_offset -= line_height * 2
 
-            # --- Pie de página ---
             draw_centered_text(y_offset, "GRACIAS POR SU COMPRA", font_size=7)
             y_offset -= line_height
-            draw_centered_text(y_offset, "clinicaodontologicanorte.com", font_size=7) # Puedes cambiar por tu URL
-            
-            c.showPage() # Finaliza la página
-            c.save() # Guarda el PDF
-            
-            QMessageBox.information(self, "Éxito", f"Ticket PDF guardado en:\n{file_name}")
+            draw_centered_text(y_offset, "clinicaodontologicanorte.com", font_size=7)
+
+            c.showPage()
+            c.save()
+
+            # -------------------------------
+            # Imprimir directo
+            # -------------------------------
+            printer_name = win32print.GetDefaultPrinter()  # impresora predeterminada
+            win32api.ShellExecute(
+                0,
+                "print",
+                temp_file,
+                f'"{printer_name}"',
+                ".",
+                0
+            )
 
         except Exception as e:
-            QMessageBox.warning(self, "Error al generar PDF", f"No se pudo generar el ticket PDF: {e}")
+            QMessageBox.warning(self, "Error al imprimir", f"No se pudo imprimir el ticket:\n{e}")

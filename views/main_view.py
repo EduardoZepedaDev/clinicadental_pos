@@ -68,7 +68,7 @@ class MainWindow(QMainWindow):
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.cargar_resumenes)
         # El tiempo se establece en milisegundos: 1 minuto = 60,000 ms
-        self.timer.start(60000)
+        self.timer.start(30000)
 
     # ----- Métodos de conexión a SQLite -----
     def cargar_resumenes(self):
