@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pkl
+
+# Entornos virtuales
+venv/
+.env/
+
+# Archivos de base de datos locales
+*.db
+*.sqlite3
+
+# Archivos de logs
+*.log
+
+# Archivos temporales / cache
+*.tmp
+*.bak
+*.swp
+*.DS_Store
+
+# Reportes generados
+*.xlsx
+*.xls
+*.csv
