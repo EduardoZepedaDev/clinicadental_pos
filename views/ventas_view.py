@@ -1,17 +1,21 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton,
-    QMessageBox, QTableWidget, QTableWidgetItem, QComboBox, QListWidget, QListWidgetItem
+    QMessageBox, QTableWidget, QTableWidgetItem, QComboBox,
+    QListWidget, QListWidgetItem
 )
 from PyQt6.QtCore import Qt
 import database
 import datetime
 import os
 import tempfile
+from pathlib import Path
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A7
 from reportlab.lib.units import mm
-import win32print
-import win32api
+
+# Carpeta donde guardamos los tickets en PDF
+SAVE_TICKETS_DIR = (Path(__file__).resolve().parent.parent / "tickets")
+SAVE_TICKETS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 class VentasWindow(QWidget):
@@ -89,8 +93,8 @@ class VentasWindow(QWidget):
         self.tabla.setHorizontalHeaderLabels(["ID", "Cliente", "Servicios", "Monto", "Fecha"])
         layout.addWidget(self.tabla)
 
-        # === Botón imprimir ticket ===
-        self.btn_imprimir = QPushButton("Imprimir Ticket", self)
+        # === Botón guardar ticket (desde selección) ===
+        self.btn_imprimir = QPushButton("Guardar Ticket (PDF)")
         self.btn_imprimir.clicked.connect(self.imprimir_ticket_seleccionado)
         layout.addWidget(self.btn_imprimir)
 
@@ -110,7 +114,7 @@ class VentasWindow(QWidget):
         self.cliente_id.addItem("Selecciona Cliente", None)
 
         clientes = database.obtener_clientes()
-        self.cliente_map = {c[0]: c[1] for c in clientes}
+        self.cliente_map = {c[0]: c[1] for c in clientes}  # id -> nombre
         for c in clientes:
             self.cliente_id.addItem(c[1], c[0])
 
@@ -118,7 +122,7 @@ class VentasWindow(QWidget):
         self.servicio_id.clear()
         self.servicio_id.addItem("Selecciona Servicio", None)
         servicios = database.obtener_servicios()
-        self.servicio_map = {s[0]: s[1] for s in servicios}
+        self.servicio_map = {s[0]: s[1] for s in servicios}  # id -> nombre
         self._servicio_map_base = dict(self.servicio_map)
         for s in servicios:
             self.servicio_id.addItem(s[1], s[0])
@@ -202,6 +206,7 @@ class VentasWindow(QWidget):
         if not self.servicios_seleccionados:
             QMessageBox.warning(self, "Error", "Agrega al menos un servicio a la venta.")
             return
+
         monto_text = (self.monto.text() or "").strip()
         if not monto_text:
             QMessageBox.warning(self, "Error", "El monto total es obligatorio.")
@@ -216,6 +221,7 @@ class VentasWindow(QWidget):
             venta_id = database.registrar_venta(cliente_id_sel, self.servicios_seleccionados, monto_total)
             QMessageBox.information(self, "Éxito", f"Venta #{venta_id} registrada.")
 
+            # Guardar PDF del ticket
             self.imprimir_ticket_por_id(venta_id)
 
             # Limpiar UI
@@ -255,14 +261,13 @@ class VentasWindow(QWidget):
     def imprimir_ticket_seleccionado(self):
         fila = self.tabla.currentRow()
         if fila < 0:
-            QMessageBox.warning(self, "Error", "Selecciona una venta para imprimir.")
+            QMessageBox.warning(self, "Error", "Selecciona una venta para guardar su ticket.")
             return
         venta_id = int(self.tabla.item(fila, 0).text())
         self.imprimir_ticket_por_id(venta_id)
-        QMessageBox.information(self, "Ticket enviado", f"Ticket de la venta ID {venta_id} enviado a la impresora.")
 
     # ====================
-    # Ticket
+    # Guardado de Ticket (PDF)
     # ====================
     def imprimir_ticket_por_id(self, venta_id: int):
         venta = database.obtener_venta_por_id(venta_id)
@@ -270,19 +275,39 @@ class VentasWindow(QWidget):
             QMessageBox.warning(self, "Error", "No se encontraron los datos de la venta.")
             return
 
+        # venta: (id, cliente_id, servicios_texto, monto, fecha)
         _, cliente_id, servicios_texto, monto, fecha = venta
         cliente_nombre = self.cliente_map.get(cliente_id, "Desconocido")
 
-        self.generar_ticket_pdf(cliente_nombre, servicios_texto, float(monto), fecha)
+        pdf_path = self.generar_ticket_pdf(
+            venta_id=venta_id,
+            cliente_nombre=cliente_nombre,
+            servicios_texto=servicios_texto,
+            monto_total=float(monto),
+            fecha_txt=fecha
+        )
 
-    def generar_ticket_pdf(self, cliente_nombre: str, servicios_texto: str, monto_total: float, fecha_txt: str):
+        QMessageBox.information(
+            self,
+            "Ticket guardado",
+            f"Se guardó el ticket en:\n{pdf_path}"
+        )
+
+    def generar_ticket_pdf(self, venta_id: int, cliente_nombre: str, servicios_texto: str,
+                           monto_total: float, fecha_txt: str) -> Path:
+        """
+        Genera el PDF del ticket y lo guarda en /tickets con nombre:
+        ticket_{ventaId}_{Cliente}_{yyyyMMdd}.pdf
+        """
+        # Sanitizar nombre del cliente para el archivo
+        safe_cliente = "".join(ch if ch.isalnum() or ch in (" ", "_", "-") else "_" for ch in cliente_nombre)
+        safe_cliente = "_".join(safe_cliente.split())
+        fecha_archivo = datetime.datetime.now().strftime("%Y%m%d")
+        filename = f"ticket_{venta_id}_{safe_cliente}_{fecha_archivo}.pdf"
+        pdf_path = SAVE_TICKETS_DIR / filename
+
         try:
-            temp_file = os.path.join(
-                tempfile.gettempdir(),
-                f"ticket_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
-            )
-
-            c = canvas.Canvas(temp_file, pagesize=A7)
+            c = canvas.Canvas(str(pdf_path), pagesize=A7)
             width, height = A7
 
             NOMBRE_TIENDA = "CLINICA DENTAL NORTE"
@@ -300,7 +325,7 @@ class VentasWindow(QWidget):
                 tw = c.stringWidth(text, font, size)
                 c.drawString((width - tw) / 2.0, y_pos, text)
 
-            # Header
+            # Encabezado
             draw_center(y, NOMBRE_TIENDA.upper(), size=10); y -= lh
             draw_center(y, DIRECCION_TIENDA, size=7); y -= lh
             draw_center(y, TELEFONO_TIENDA, size=7); y -= lh
@@ -308,12 +333,14 @@ class VentasWindow(QWidget):
             draw_center(y, HORARIO_TIENDA, size=7); y -= lh
             draw_center(y, RFC_TIENDA, size=7); y -= lh * 1.5
 
+            # Datos de venta
             c.setFont("Helvetica", 7)
             c.drawString(5 * mm, y, "FECHA:")
             c.drawRightString(width - 5 * mm, y, fecha_txt); y -= lh
             c.drawString(5 * mm, y, "CLIENTE:")
             c.drawRightString(width - 5 * mm, y, cliente_nombre); y -= lh * 1.5
 
+            # Servicios
             c.drawString(5 * mm, y, "SERVICIOS:"); y -= lh * 0.5
             draw_center(y, "========================================", size=7); y -= lh * 0.5
 
@@ -322,18 +349,22 @@ class VentasWindow(QWidget):
                 c.drawString(5 * mm, y, f"- {nombre}")
                 y -= lh
 
+            # Total
             draw_center(y, "========================================", size=7); y -= lh * 0.5
             c.drawString(5 * mm, y, "TOTAL:")
             c.drawRightString(width - 5 * mm, y, f"${float(monto_total):.2f}"); y -= lh * 2
 
+            # Pie
             draw_center(y, "GRACIAS POR SU COMPRA", size=7); y -= lh
             draw_center(y, "clinicaodontologicanorte.com", size=7)
 
             c.showPage()
             c.save()
 
-            printer_name = win32print.GetDefaultPrinter()
-            win32api.ShellExecute(0, "print", temp_file, f'"{printer_name}"', ".", 0)
+            return pdf_path
 
         except Exception as e:
-            QMessageBox.warning(self, "Error al imprimir", f"No se pudo imprimir el ticket:\n{e}")
+            QMessageBox.warning(self, "Error al guardar PDF", f"No se pudo generar el ticket:\n{e}")
+            # fallback temporal
+            tmp = Path(tempfile.gettempdir()) / f"ticket_tmp_{venta_id}.pdf"
+            return tmp

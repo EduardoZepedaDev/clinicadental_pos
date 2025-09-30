@@ -49,7 +49,18 @@ def init_db():
             FOREIGN KEY (cliente_id) REFERENCES clientes(id)
         )
     """)
-
+    cols = {r[1] for r in cur.execute("PRAGMA table_info('ventas')").fetchall()}
+    if "servicios_texto" not in cols:
+        cur.execute("ALTER TABLE ventas ADD COLUMN servicios_texto TEXT NOT NULL DEFAULT ''")
+        # backfill usando servicio_id si existe
+        if "servicio_id" in cols:
+            cur.execute("""
+                UPDATE ventas
+                SET servicios_texto = (
+                    SELECT s.nombre FROM servicios s WHERE s.id = ventas.servicio_id
+                )
+                WHERE servicios_texto = '' AND servicio_id IS NOT NULL
+            """)
     con.commit()
     con.close()
 
