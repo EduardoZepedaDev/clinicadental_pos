@@ -3,37 +3,60 @@ import pandas as pd
 from datetime import datetime
 
 DB_ENGINE = "sqlite"
+DB_PATH = "clinica.db"
 
+
+# =========================
+# Conexión / Inicialización
+# =========================
 def get_connection():
     if DB_ENGINE == "sqlite":
-        return sqlite3.connect("clinica.db")
+        con = sqlite3.connect(DB_PATH)
+        con.execute("PRAGMA foreign_keys = ON;")
+        return con
+    raise ValueError(f"DB_ENGINE no soportado: {DB_ENGINE}")
+
 
 def init_db():
     con = get_connection()
     cur = con.cursor()
-    cur.execute("""CREATE TABLE IF NOT EXISTS clientes (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        nombre TEXT NOT NULL,
-        telefono TEXT NOT NULL
-    )""")
-    cur.execute("""CREATE TABLE IF NOT EXISTS servicios (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        nombre TEXT NOT NULL,
-        precio REAL NOT NULL
-    )""")
-    cur.execute("""CREATE TABLE IF NOT EXISTS ventas (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        cliente_id INTEGER,
-        servicio_id INTEGER,
-        fecha TEXT,
-        monto REAL,
-        FOREIGN KEY (cliente_id) REFERENCES clientes(id),
-        FOREIGN KEY (servicio_id) REFERENCES servicios(id)
-    )""")
+
+    # Clientes
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS clientes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre TEXT NOT NULL,
+            telefono TEXT NOT NULL
+        )
+    """)
+
+    # Servicios (solo nombre)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS servicios (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre TEXT NOT NULL
+        )
+    """)
+
+    # Ventas (ahora monto lo pone el usuario)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS ventas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cliente_id INTEGER NOT NULL,
+            servicios_texto TEXT NOT NULL,  -- nombres concatenados
+            fecha TEXT NOT NULL,
+            monto REAL NOT NULL,
+            FOREIGN KEY (cliente_id) REFERENCES clientes(id)
+        )
+    """)
+
     con.commit()
     con.close()
 
-# ---------------- CLIENTES (CRD) ----------------
+
+# =========================
+# CLIENTES (CRD)
+# =========================
 def agregar_cliente(nombre, telefono):
     con = get_connection()
     cur = con.cursor()
@@ -41,13 +64,15 @@ def agregar_cliente(nombre, telefono):
     con.commit()
     con.close()
 
+
 def obtener_clientes():
     con = get_connection()
     cur = con.cursor()
-    cur.execute("SELECT * FROM clientes")
+    cur.execute("SELECT id, nombre, telefono FROM clientes ORDER BY id DESC")
     rows = cur.fetchall()
     con.close()
     return rows
+
 
 def eliminar_cliente(cliente_id):
     con = get_connection()
@@ -56,21 +81,26 @@ def eliminar_cliente(cliente_id):
     con.commit()
     con.close()
 
-# ---------------- SERVICIOS (CRD) ----------------
-def agregar_servicio(nombre, precio):
+
+# =========================
+# SERVICIOS (CRD)
+# =========================
+def agregar_servicio(nombre):
     con = get_connection()
     cur = con.cursor()
-    cur.execute("INSERT INTO servicios(nombre, precio) VALUES (?, ?)", (nombre, precio))
+    cur.execute("INSERT INTO servicios(nombre) VALUES (?)", (nombre,))
     con.commit()
     con.close()
+
 
 def obtener_servicios():
     con = get_connection()
     cur = con.cursor()
-    cur.execute("SELECT * FROM servicios")
+    cur.execute("SELECT id, nombre FROM servicios ORDER BY id DESC")
     rows = cur.fetchall()
     con.close()
     return rows
+
 
 def eliminar_servicio(servicio_id):
     con = get_connection()
@@ -79,22 +109,42 @@ def eliminar_servicio(servicio_id):
     con.commit()
     con.close()
 
-# ---------------- VENTAS (CRD) ----------------
-def registrar_venta(cliente_id, servicio_id, monto):
+
+# =========================
+# VENTAS
+# =========================
+def registrar_venta(cliente_id: int, servicios_seleccionados: list, monto: float) -> int:
+    """
+    Crea una venta.
+    - cliente_id: int
+    - servicios_seleccionados: lista de nombres de servicios
+    - monto: lo escribe el usuario
+    """
+    if not servicios_seleccionados:
+        raise ValueError("Debes seleccionar al menos un servicio.")
+
+    servicios_texto = ", ".join(servicios_seleccionados)
+    fecha_txt = datetime.now().strftime("%Y-%m-%d %H:%M")
+
     con = get_connection()
     cur = con.cursor()
-    cur.execute("INSERT INTO ventas(cliente_id, servicio_id, fecha, monto) VALUES (?, ?, ?, ?)",
-                (cliente_id, servicio_id, datetime.now().strftime("%Y-%m-%d %H:%M"), monto))
+    cur.execute("""
+        INSERT INTO ventas (cliente_id, servicios_texto, fecha, monto)
+        VALUES (?, ?, ?, ?)
+    """, (cliente_id, servicios_texto, fecha_txt, float(monto)))
+    venta_id = cur.lastrowid
     con.commit()
     con.close()
 
+    return venta_id
+
+
 def obtener_ventas():
     query = """
-    SELECT v.id, c.nombre as cliente, s.nombre as servicio, v.monto, v.fecha
+    SELECT v.id, c.nombre AS cliente, v.servicios_texto, v.monto, v.fecha
     FROM ventas v
-    LEFT JOIN clientes c ON v.cliente_id = c.id
-    LEFT JOIN servicios s ON v.servicio_id = s.id
-    ORDER BY v.fecha DESC
+    JOIN clientes c ON c.id = v.cliente_id
+    ORDER BY v.fecha DESC, v.id DESC
     """
     con = get_connection()
     cur = con.cursor()
@@ -103,18 +153,20 @@ def obtener_ventas():
     con.close()
     return rows
 
-def eliminar_venta(venta_id):
+
+def eliminar_venta(venta_id: int):
     con = get_connection()
     cur = con.cursor()
     cur.execute("DELETE FROM ventas WHERE id=?", (venta_id,))
     con.commit()
     con.close()
 
-def obtener_venta_por_id(venta_id):
+
+def obtener_venta_por_id(venta_id: int):
     con = get_connection()
     cur = con.cursor()
     cur.execute("""
-        SELECT v.id, v.cliente_id, v.servicio_id, v.monto, v.fecha
+        SELECT v.id, v.cliente_id, v.servicios_texto, v.monto, v.fecha
         FROM ventas v
         WHERE v.id = ?
     """, (venta_id,))
@@ -122,27 +174,32 @@ def obtener_venta_por_id(venta_id):
     con.close()
     return venta
 
-# ---------------- REPORTES (DataFrames) ----------------
+
+# =========================
+# REPORTES (DataFrames)
+# =========================
 def df_clientes():
     con = get_connection()
-    df = pd.read_sql("SELECT * FROM clientes", con)
+    df = pd.read_sql("SELECT id, nombre, telefono FROM clientes ORDER BY id DESC", con)
     con.close()
     return df
+
 
 def df_servicios():
     con = get_connection()
-    df = pd.read_sql("SELECT * FROM servicios", con)
+    df = pd.read_sql("SELECT id, nombre FROM servicios ORDER BY id DESC", con)
     con.close()
     return df
 
+
 def df_ventas():
     query = """
-    SELECT v.id, c.nombre as cliente, s.nombre as servicio, v.monto, v.fecha
+    SELECT v.id, c.nombre AS cliente, v.servicios_texto, v.monto, v.fecha
     FROM ventas v
-    LEFT JOIN clientes c ON v.cliente_id = c.id
-    LEFT JOIN servicios s ON v.servicio_id = s.id
+    JOIN clientes c ON c.id = v.cliente_id
+    ORDER BY v.fecha DESC, v.id DESC
     """
     con = get_connection()
     df = pd.read_sql(query, con)
     con.close()
-    return df
+    return df   
