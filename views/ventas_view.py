@@ -372,28 +372,28 @@ class VentasWindow(QWidget):
 </head>
 <body>
   <div class="wrap">
-    <h1>CLÍNICA DENTAL NORTE</h1>
-    <div class="muted">31 Pte entre 6ª y 8ª Nte • Col. 5 de Febrero</div>
-    <div class="muted">Tel. 962 127 8373 • clinica.odontologica.norte.85@gmail.com</div>
-    <div class="muted">L–S 08:00–20:00 • RFC: GOMS6507062H3</div>
-
+    <h1>CLÍNICA DENTAL NORTE</h1>fecha_txt
+    <div class="muted">31 Pte entre 6ª y 8ª Nte</div>
+    <div class="muted">Col. 5 de Febrero</div>
+    <div class="muted">Tel. 962 127 8373</div>
+    <div class="muted">L–S 08:00–20:00</div>
+    <div class="muted">RFC: GOMS6507062H3</div>
     <div class="row"><div><strong>Fecha</strong></div><div>{fecha_txt}</div></div>
     <div class="row"><div><strong>Cliente</strong></div><div>{cliente_nombre}</div></div>
-
+    <div class="row"><div><strong>========================</strong></div></div>
     <div class="sep"></div>
-
     <div class="title">Servicios</div>
     <ul>
       {servicios_items}
     </ul>
-
     <div class="sep"></div>
-
+    <div class="row"><div><strong>========================</strong></div></div>
     <div class="row total"><div>Total</div><div>${monto_total:,.2f}</div></div>
 
     <div class="sep"></div>
 
     <div class="center muted">¡Gracias por su preferencia!</div>
+    <div class="center muted">clinica.odontologica.norte.85@gmail.com</div>
   </div>
 </body>
 </html>"""
