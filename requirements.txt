@@ -7,5 +7,5 @@ python-escpos>=3.0a10
 # Exportar a Excel
 pandas>=2.2.0
 openpyxl>=3.1.2
-
-# SQLite viene con Python, no requiere instalarse
+Jinja2>=3.1.0
+weasyprint>=62.0

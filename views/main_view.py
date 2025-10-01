@@ -1,112 +1,166 @@
-from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QLabel, QTableWidget, QTableWidgetItem, QTabWidget
-from PyQt6.QtGui import QAction
-from PyQt6.QtCore import QTimer  # Importamos QTimer
+# views/main_view.py
+from PyQt6.QtWidgets import (
+    QMainWindow, QWidget, QVBoxLayout, QTableWidget, QTableWidgetItem,
+    QTabWidget, QMessageBox, QToolBar
+)
+from PyQt6.QtGui import QAction, QIcon
+from PyQt6.QtCore import QTimer, QSize
 import sqlite3
-
+from pathlib import Path
+from PyQt6.QtCore import Qt
 from .clientes_view import ClientesWindow
 from .servicios_view import ServiciosWindow
 from .ventas_view import VentasWindow
 from .reportes_view import ReportesWindow
 
+
+def _icon(name: str) -> QIcon:
+    """Carga un icono de assets/icons/<name>. Si no existe, devuelve un QIcon vacío."""
+    icon_path = Path(__file__).resolve().parent.parent / "assets" / "icons" / name
+    return QIcon(str(icon_path)) if icon_path.exists() else QIcon()
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Clínica POS")
-        self.setGeometry(200, 200, 800, 600)
+        self.setWindowTitle("Clínica Dental POS")
+        self.setGeometry(200, 200, 900, 600)
 
-        # ----- Menú -----
-        menubar = self.menuBar()
+        # Ícono de ventana
+        tooth = _icon("icon.png")
+        if not tooth.isNull():
+            self.setWindowIcon(tooth)
 
-        menu_clientes = menubar.addMenu("Clientes")
-        menu_servicios = menubar.addMenu("Servicios")
-        menu_ventas = menubar.addMenu("Ventas")
-        menu_reportes = menubar.addMenu("Reportes")
+        # ----- Toolbar con iconos -----
+        toolbar = QToolBar("Acciones")
+        toolbar.setIconSize(QSize(28, 28))
+        toolbar.setMovable(False)
+        toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
+        self.addToolBar(toolbar)
 
-        action_clientes = QAction("Administrar Clientes", self)
-        action_clientes.triggered.connect(self.abrir_clientes)
-        menu_clientes.addAction(action_clientes)
+        self.action_clientes = QAction(_icon("users.png"), "Clientes", self)
+        self.action_clientes.setToolTip("Administrar Clientes")
+        self.action_clientes.triggered.connect(self.abrir_clientes)
+        toolbar.addAction(self.action_clientes)
 
-        action_servicios = QAction("Administrar Servicios", self)
-        action_servicios.triggered.connect(self.abrir_servicios)
-        menu_servicios.addAction(action_servicios)
 
-        action_ventas = QAction("Nueva Venta", self)
-        action_ventas.triggered.connect(self.abrir_ventas)
-        menu_ventas.addAction(action_ventas)
+        self.action_servicios = QAction(_icon("tools.png"), "Servicios", self)
+        self.action_servicios.setToolTip("Administrar Servicios")
+        self.action_servicios.triggered.connect(self.abrir_servicios)
+        toolbar.addAction(self.action_servicios)
 
-        action_reportes = QAction("Exportar a Excel", self)
-        action_reportes.triggered.connect(self.abrir_reportes)
-        menu_reportes.addAction(action_reportes)
+        self.action_ventas = QAction(_icon("cart.png"), "Ventas", self)
+        self.action_ventas.setToolTip("Registrar Nueva Venta")
+        self.action_ventas.triggered.connect(self.abrir_ventas)
+        toolbar.addAction(self.action_ventas)
+
+        toolbar.addSeparator()
+
+        self.action_actualizar = QAction(_icon("refresh.png"), "Actualizar", self)
+        self.action_actualizar.setToolTip("Actualizar resúmenes (F5)")
+        self.action_actualizar.setShortcut("F5")
+        self.action_actualizar.triggered.connect(self.cargar_resumenes)
+        toolbar.addAction(self.action_actualizar)
+
+        toolbar.addSeparator()
+
+        self.action_reportes = QAction(_icon("report.png"), "Reportes", self)
+        self.action_reportes.setToolTip("Exportar Reportes a Excel")
+        self.action_reportes.triggered.connect(self.abrir_reportes)
+        toolbar.addAction(self.action_reportes)
 
         # ----- Contenedor central -----
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         layout = QVBoxLayout()
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
 
         # ----- Tabs con resúmenes -----
         self.tabs = QTabWidget()
 
         # Tabla clientes
         self.tab_clientes = QTableWidget()
+        self._prep_table(self.tab_clientes)
         self.tabs.addTab(self.tab_clientes, "Clientes")
 
-        # Tabla servicios
+        # Tabla servicios (solo nombre)
         self.tab_servicios = QTableWidget()
+        self._prep_table(self.tab_servicios)
         self.tabs.addTab(self.tab_servicios, "Servicios")
 
-        # Tabla ventas
+        # Tabla ventas (usa servicios_texto)
         self.tab_ventas = QTableWidget()
+        self._prep_table(self.tab_ventas)
         self.tabs.addTab(self.tab_ventas, "Ventas")
 
         layout.addWidget(self.tabs)
         central_widget.setLayout(layout)
 
-        # Cargar datos iniciales desde SQLite
+        # Cargar datos iniciales
         self.cargar_resumenes()
-        
-        # --- NUEVO: Configuración del temporizador para actualizar cada minuto ---
+
+        # --- Timer de actualización automática (60s)
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.cargar_resumenes)
-        # El tiempo se establece en milisegundos: 1 minuto = 60,000 ms
-        self.timer.start(30000)
+        self.timer.start(60000)
 
-    # ----- Métodos de conexión a SQLite -----
+        # Barra de estado
+        self.statusBar().showMessage("Listo")
+
+    # ----- Utilidad tabla -----
+    def _prep_table(self, table: QTableWidget):
+        table.setAlternatingRowColors(True)
+        table.verticalHeader().setVisible(False)
+        table.setSortingEnabled(True)
+
+    # ----- Carga de resúmenes -----
     def cargar_resumenes(self):
-        conn = sqlite3.connect("clinica.db")
-        cursor = conn.cursor()
+        try:
+            conn = sqlite3.connect("clinica.db")
+            cursor = conn.cursor()
 
-        # Resumen de clientes
-        cursor.execute("SELECT id, nombre, telefono FROM clientes LIMIT 10")
-        rows = cursor.fetchall()
-        self.llenar_tabla(self.tab_clientes, rows, ["ID", "Nombre", "Teléfono"])
+            # Resumen de clientes
+            cursor.execute("SELECT id, nombre, telefono FROM clientes ORDER BY id DESC LIMIT 50")
+            rows = cursor.fetchall()
+            self._llenar_tabla(self.tab_clientes, rows, ["ID", "Nombre", "Teléfono"])
 
-        # Resumen de servicios
-        cursor.execute("SELECT id, nombre, precio FROM servicios LIMIT 10")
-        rows = cursor.fetchall()
-        self.llenar_tabla(self.tab_servicios, rows, ["ID", "Servicio", "Precio"])
+            # Resumen de servicios
+            cursor.execute("SELECT id, nombre FROM servicios ORDER BY id DESC LIMIT 50")
+            rows = cursor.fetchall()
+            self._llenar_tabla(self.tab_servicios, rows, ["ID", "Servicio"])
 
-        # Resumen de ventas
-        cursor.execute("""
-            SELECT v.id, c.nombre AS cliente, s.nombre AS servicio, v.monto, v.fecha
-            FROM ventas v
-            JOIN clientes c ON v.cliente_id = c.id
-            JOIN servicios s ON v.servicio_id = s.id
-            ORDER BY v.id DESC
-            LIMIT 10
-        """)
-        rows = cursor.fetchall()
-        self.llenar_tabla(self.tab_ventas, rows, ["ID", "Cliente", "Servicio", "Monto", "Fecha"])
+            # Resumen de ventas
+            cursor.execute("""
+                SELECT v.id, c.nombre AS cliente, v.servicios_texto AS servicios, v.monto, v.fecha
+                FROM ventas v
+                LEFT JOIN clientes c ON v.cliente_id = c.id
+                ORDER BY v.id DESC
+                LIMIT 50
+            """)
+            rows = cursor.fetchall()
+            self._llenar_tabla(self.tab_ventas, rows, ["ID", "Cliente", "Servicios", "Monto", "Fecha"])
 
-        conn.close()
+            conn.close()
 
-    def llenar_tabla(self, tabla, datos, headers):
+            # Ajuste de columnas al contenido
+            for t in (self.tab_clientes, self.tab_servicios, self.tab_ventas):
+                t.resizeColumnsToContents()
+
+            self.statusBar().showMessage("Resúmenes actualizados")
+        except Exception as e:
+            QMessageBox.warning(self, "Error de BD", f"No se pudieron cargar los resúmenes:\n{e}")
+
+    def _llenar_tabla(self, tabla: QTableWidget, datos, headers):
+        tabla.setSortingEnabled(False)
+        tabla.clear()
         tabla.setRowCount(len(datos))
         tabla.setColumnCount(len(headers))
         tabla.setHorizontalHeaderLabels(headers)
-
         for i, row in enumerate(datos):
             for j, value in enumerate(row):
                 tabla.setItem(i, j, QTableWidgetItem(str(value)))
+        tabla.setSortingEnabled(True)
 
     # ----- Ventanas secundarias -----
     def abrir_clientes(self):

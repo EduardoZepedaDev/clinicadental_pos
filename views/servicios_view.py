@@ -18,10 +18,6 @@ class ServiciosWindow(QWidget):
         self.nombre.setPlaceholderText("Nombre del servicio")
         layout.addWidget(self.nombre)
 
-        self.precio = QLineEdit(self)
-        self.precio.setPlaceholderText("Precio")
-        layout.addWidget(self.precio)
-
         # --- Botones ---
         btn_layout = QHBoxLayout()
 
@@ -37,8 +33,8 @@ class ServiciosWindow(QWidget):
 
         # --- Tabla de servicios ---
         self.tabla = QTableWidget()
-        self.tabla.setColumnCount(3)
-        self.tabla.setHorizontalHeaderLabels(["ID", "Nombre", "Precio"])
+        self.tabla.setColumnCount(2)
+        self.tabla.setHorizontalHeaderLabels(["ID", "Nombre"])
         layout.addWidget(self.tabla)
 
         self.setLayout(layout)
@@ -49,25 +45,16 @@ class ServiciosWindow(QWidget):
     # ====================
     # MÉTODOS (CRD)
     # ====================
-
     def guardar_servicio(self):
         nombre = self.nombre.text().strip()
-        precio = self.precio.text().strip()
 
-        if not nombre or not precio:
-            QMessageBox.warning(self, "Error", "Todos los campos son obligatorios")
+        if not nombre:
+            QMessageBox.warning(self, "Error", "El nombre del servicio es obligatorio")
             return
 
-        try:
-            precio = float(precio)
-        except ValueError:
-            QMessageBox.warning(self, "Error", "El precio debe ser numérico")
-            return
-
-        database.agregar_servicio(nombre, precio)
+        database.agregar_servicio(nombre)
         QMessageBox.information(self, "Éxito", "Servicio agregado")
         self.nombre.clear()
-        self.precio.clear()
         self.cargar_servicios()
 
     def eliminar_servicio(self):
@@ -77,13 +64,11 @@ class ServiciosWindow(QWidget):
             return
 
         servicio_id = int(self.tabla.item(fila, 0).text())
-        # Obtén el nombre del servicio de la segunda columna (índice 1)
         nombre = self.tabla.item(fila, 1).text()
 
         confirm = QMessageBox.question(
             self,
             "Confirmar",
-            # Usa la variable 'nombre' en el mensaje de confirmación
             f"¿Seguro que deseas eliminar el servicio '{nombre}'?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
