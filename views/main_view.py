@@ -106,7 +106,7 @@ class MainWindow(QMainWindow):
         self.timer.start(60000)
 
         # Barra de estado
-        self.statusBar().showMessage("Listo")
+        self.statusBar().showMessage("Resumenes")
 
     # ----- Utilidad tabla -----
     def _prep_table(self, table: QTableWidget):
@@ -121,25 +121,25 @@ class MainWindow(QMainWindow):
             cursor = conn.cursor()
 
             # Resumen de clientes
-            cursor.execute("SELECT id, nombre, telefono FROM clientes ORDER BY id DESC LIMIT 50")
+            cursor.execute("SELECT nombre, telefono FROM clientes ORDER BY id DESC LIMIT 50")
             rows = cursor.fetchall()
-            self._llenar_tabla(self.tab_clientes, rows, ["ID", "Nombre", "Teléfono"])
+            self._llenar_tabla(self.tab_clientes, rows, [ "Nombre", "Teléfono"])
 
             # Resumen de servicios
-            cursor.execute("SELECT id, nombre FROM servicios ORDER BY id DESC LIMIT 50")
+            cursor.execute("SELECT nombre FROM servicios ORDER BY id DESC LIMIT 50")
             rows = cursor.fetchall()
-            self._llenar_tabla(self.tab_servicios, rows, ["ID", "Servicio"])
+            self._llenar_tabla(self.tab_servicios, rows, [ "Servicio"])
 
             # Resumen de ventas
             cursor.execute("""
-                SELECT v.id, c.nombre AS cliente, v.servicios_texto AS servicios, v.monto, v.fecha
+                SELECT  c.nombre AS cliente, v.servicios_texto AS servicios, v.monto, v.fecha
                 FROM ventas v
                 LEFT JOIN clientes c ON v.cliente_id = c.id
                 ORDER BY v.id DESC
                 LIMIT 50
             """)
             rows = cursor.fetchall()
-            self._llenar_tabla(self.tab_ventas, rows, ["ID", "Cliente", "Servicios", "Monto", "Fecha"])
+            self._llenar_tabla(self.tab_ventas, rows, ["Cliente", "Servicios", "Monto", "Fecha"])
 
             conn.close()
 

@@ -1,7 +1,12 @@
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QMessageBox
 import database
 import pandas as pd
+from pathlib import Path
+import os
 
+REPORTES_DIR = Path(os.getenv("CLINICA_POS_REPORTES_DIR",
+                              Path.home() / "Documents" / "ClinicaDentalPOS" / "Reportes"))
+REPORTES_DIR.mkdir(parents=True, exist_ok=True)
 class ReportesWindow(QWidget):
     def __init__(self):
         super().__init__()

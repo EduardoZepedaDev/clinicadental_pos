@@ -11,9 +11,11 @@ import datetime
 from pathlib import Path
 import os
 
-# Carpeta donde guardamos los tickets en PDF
-SAVE_TICKETS_DIR = (Path(__file__).resolve().parent.parent / "tickets")
-SAVE_TICKETS_DIR.mkdir(parents=True, exist_ok=True)
+# Carpeta donde guardamos los tickets en PDF (Documentos\ClinicaDentalPOS\Tickets)
+TICKETS_DIR = Path(os.getenv("CLINICA_POS_TICKETS_DIR",
+                             Path.home() / "Documents" / "ClinicaDentalPOS" / "Tickets"))
+TICKETS_DIR.mkdir(parents=True, exist_ok=True)
+SAVE_TICKETS_DIR = TICKETS_DIR  # alias para mantener el resto del código igual
 
 # Nombre exacto de tu impresora térmica en Windows
 THERMAL_PRINTER_NAME = r"POS80 Printer"
@@ -372,7 +374,7 @@ class VentasWindow(QWidget):
 </head>
 <body>
   <div class="wrap">
-    <h1>CLÍNICA DENTAL NORTE</h1>fecha_txt
+    <h1>CLÍNICA DENTAL NORTE</h1>
     <div class="muted">31 Pte entre 6ª y 8ª Nte</div>
     <div class="muted">Col. 5 de Febrero</div>
     <div class="muted">Tel. 962 127 8373</div>

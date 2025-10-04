@@ -1,10 +1,82 @@
 import sqlite3
 import pandas as pd
 from datetime import datetime
+from pathlib import Path  # 👈 NUEVO
 
 DB_ENGINE = "sqlite"
 DB_PATH = "clinica.db"
+ABS_DB_PATH = str(Path(DB_PATH).resolve())  # 👈 NUEVO
 
+SERVICIOS_SEED = [
+    "Prótesis flexible bilateral (2 a 4 dientes)",
+    "Provisional de acrílico",
+    "Prueba de glucosa externo",
+    "Pulpectomía / Pulpotomía",
+    "Radiografía",
+    "Rebase",
+    "Resina (cavidades amplias, sin garantía, solo Terakal)",
+    "Resinas simples",
+    "Selladores de fosetas",
+    "Incrustación de resina",
+    "Incrustación de zirconia",
+    "Incrustación de metal",
+    "Incrustación de silicato de litio",
+    "Desensibilizante por unidad",
+    "Corona de zirconio estratificada (estética)",
+    "Anclaje",
+    "Amalgama",
+    "Blanqueamiento",
+    "Cementación por muñón",
+    "Cirugía de 3er molar",
+    "Corona IMAX estratificada",
+    "Corona de zirconia (cada diente normal)",
+    "Corona IMAX monolítica",
+    "Corona metal porcelana",
+    "Corona libre de metal",
+    "Carillas de resina",
+    "Curación (4 sesiones)",
+    "Curetaje / colgajo por arcada",
+    "Desgaste (prótesis externas)",
+    "Endodoncia de centrales y laterales",
+    "Endodoncia de caninos y premolares",
+    "Endodoncia de molares",
+    "Endopostes",
+    "Extracción de restos radiculares",
+    "Extracción simple",
+    "Guarda flexible, rígida",
+    "Corona de acrílico (sin garantía)",
+    "Jacket (polividrio / resina SIGNUM)",
+    "Limpieza (profilaxis)",
+    "Mantenedor de espacio",
+    "Prótesis acrílico bilateral, total",
+    "Prótesis acrílico unilateral",
+    "Prótesis flexible total (Valplast)",
+    "Prótesis flexible unilateral (1 a 2 dientes)",
+    "Retirar brackets sup./inf. + limpieza (externos)",
+    "Retiro de brackets + limpieza (externos)",
+    "Consulta pacientes externos",
+    "Trampa de dedo fija",
+    "Trampa de dedo removible",
+    "Tratamiento de ortodoncia invisible",
+    "Tratamiento de ortodoncia BD. mini",
+    "Retenedores pacientes de la clínica",
+    "Retenedores pacientes externos",
+    "Gingivectomía",
+    "Gingivectomía completa arriba y abajo",
+    "Retiro de trampa",
+    "Un implante",
+    "Dos implantes o más",
+    "Apicectomía",
+    "Cirugía mucocele",
+    "Plaquita expansora",
+    "Frenilectomía",
+    "Retenedor fijo",
+    "Retenedor PETG (clínica)",
+    "Retenedor por segmentos",
+    "Trainer",
+    "Cirugía de anclaje",
+    "Gingivectomía por cuadrante",
+]
 
 # =========================
 # Conexión / Inicialización
@@ -18,6 +90,7 @@ def get_connection():
 
 
 def init_db():
+    print(f"[DB] Usando base de datos en: {ABS_DB_PATH}")  # 👈 debug útil
     con = get_connection()
     cur = con.cursor()
 
@@ -30,15 +103,17 @@ def init_db():
         )
     """)
 
-    # Servicios (solo nombre)
+    # Servicios (creamos tabla si no existe; el UNIQUE lo aseguramos con un índice)
     cur.execute("""
         CREATE TABLE IF NOT EXISTS servicios (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             nombre TEXT NOT NULL
         )
     """)
+    # Aseguramos unicidad por nombre SIN romper esquemas previos
+    cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_servicios_nombre ON servicios(nombre)")
 
-    # Ventas (ahora monto lo pone el usuario)
+    # Ventas
     cur.execute("""
         CREATE TABLE IF NOT EXISTS ventas (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -49,10 +124,12 @@ def init_db():
             FOREIGN KEY (cliente_id) REFERENCES clientes(id)
         )
     """)
+
+    # Migración defensiva por si la tabla existía sin 'servicios_texto'
     cols = {r[1] for r in cur.execute("PRAGMA table_info('ventas')").fetchall()}
     if "servicios_texto" not in cols:
         cur.execute("ALTER TABLE ventas ADD COLUMN servicios_texto TEXT NOT NULL DEFAULT ''")
-        # backfill usando servicio_id si existe
+        # Nota: 'servicio_id' casi seguro no existe ya; dejamos el backfill como opcional
         if "servicio_id" in cols:
             cur.execute("""
                 UPDATE ventas
@@ -61,8 +138,45 @@ def init_db():
                 )
                 WHERE servicios_texto = '' AND servicio_id IS NOT NULL
             """)
+
+    # 👉 Seed: rellena faltantes (inserta todo si está vacía; ignora duplicados si ya hay)
+    total_antes, total_despues, insertados = seed_servicios_fill_missing(con)
+    print(f"[SEED] Servicios antes: {total_antes}, después: {total_despues}, insertados: {insertados}")
+
     con.commit()
     con.close()
+
+def seed_servicios_fill_missing(con):
+    """
+    Inserta todos los servicios del seed usando INSERT OR IGNORE.
+    - Si la tabla está vacía: inserta todos.
+    - Si ya hay algunos: inserta solo los faltantes.
+    Devuelve (total_antes, total_despues, insertados).
+    """
+    cur = con.cursor()
+
+    # Garantiza tabla e índice único
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS servicios (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre TEXT NOT NULL
+        )
+    """)
+    cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_servicios_nombre ON servicios(nombre)")
+
+    cur.execute("SELECT COUNT(*) FROM servicios")
+    total_antes = cur.fetchone()[0]
+
+    cur.executemany("INSERT OR IGNORE INTO servicios (nombre) VALUES (?)",
+                    [(s,) for s in SERVICIOS_SEED])
+
+    cur.execute("SELECT COUNT(*) FROM servicios")
+    total_despues = cur.fetchone()[0]
+    insertados = total_despues - total_antes
+
+    con.commit()
+    return total_antes, total_despues, insertados
+
 
 
 # =========================
